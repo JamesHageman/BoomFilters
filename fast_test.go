@@ -119,3 +119,29 @@ func BenchmarkLockFreeAdd(b *testing.B) {
 		f.Add(data[n])
 	}
 }
+
+func BenchmarkLockFreeAdd_Concurrent(b *testing.B) {
+	b.StopTimer()
+	f := NewLockFreeBloomFilter(uint(b.N), 0.1)
+	data := make([][]byte, b.N)
+	for i := 0; i < b.N; i++ {
+		data[i] = []byte(strconv.Itoa(i))
+	}
+	workers := 4
+	wg := sync.WaitGroup{}
+	wg.Add(workers)
+	b.StartTimer()
+
+	for w := 0; w < workers; w++ {
+		start := b.N / workers * w
+		end := b.N / workers * (w + 1)
+
+		go func() {
+			for i := start; i < end; i++ {
+				f.Add(data[i])
+			}
+			wg.Done()
+		}()
+	}
+	wg.Wait()
+}

@@ -1,7 +1,7 @@
 package boom
 
 import (
-	"encoding/binary"
+	"hash"
 	"hash/fnv"
 	"sync"
 	"sync/atomic"
@@ -43,7 +43,7 @@ func (f *LockFreeBloomFilter) K() uint {
 }
 
 func (f *LockFreeBloomFilter) Test(key []byte) bool {
-	lower, upper := hashKernelLockFree(key)
+	lower, upper := f.hashKernelLockFree(key)
 
 	// If any of the K bits are not set, then it's not a member.
 	for i := uint(0); i < f.k; i++ {
@@ -58,7 +58,7 @@ func (f *LockFreeBloomFilter) Test(key []byte) bool {
 }
 
 func (f *LockFreeBloomFilter) Add(key []byte) Filter {
-	lower, upper := hashKernelLockFree(key)
+	lower, upper := f.hashKernelLockFree(key)
 
 	// Set all k bits to 1
 	for i := uint(0); i < f.k; i++ {
@@ -70,7 +70,7 @@ func (f *LockFreeBloomFilter) Add(key []byte) Filter {
 }
 
 func (f *LockFreeBloomFilter) TestAndAdd(key []byte) bool {
-	lower, upper := hashKernelLockFree(key)
+	lower, upper := f.hashKernelLockFree(key)
 	member := true
 
 	// If any of the K bits are not set, then it's not a member.
@@ -87,11 +87,15 @@ func (f *LockFreeBloomFilter) TestAndAdd(key []byte) bool {
 	return member
 }
 
-func hashKernelLockFree(data []byte) (uint32, uint32) {
-	hash := fnv.New64()
-	hash.Write(data)
-	sum := hash.Sum(nil)
-	return binary.BigEndian.Uint32(sum[4:8]), binary.BigEndian.Uint32(sum[0:4])
+func (f *LockFreeBloomFilter) hashKernelLockFree(data []byte) (uint32, uint32) {
+	h := f.hashPool.Get().(hash.Hash64)
+	h.Write(data)
+	sum := h.Sum64()
+	higher := uint32(sum >> 32)
+	lower := uint32(sum)
+	h.Reset()
+	f.hashPool.Put(h)
+	return higher, lower
 }
 
 func (f *LockFreeBloomFilter) getBit(offset uint) bool {
